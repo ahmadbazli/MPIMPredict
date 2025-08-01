@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# --------- Modified Picard Iterative Method ---------
+# ----- MPIM and RK4 functions (as before) -----
 def modified_picard(f, y0, t, num_iter=3):
     y = np.zeros((len(t), len(y0)))
     y[0] = y0
@@ -11,13 +11,11 @@ def modified_picard(f, y0, t, num_iter=3):
         h = t[i] - t[i-1]
         y_approx = y[i-1].copy()
         for _ in range(num_iter):
-            # Simple Euler-style integration (replace with quadrature for higher accuracy if desired)
             y_new = y[i-1] + h * f(y_approx, t[i-1])
             y_approx = y_new
         y[i] = y_approx
     return y
 
-# --------- Fourth Order Runge-Kutta Method (RK4) ---------
 def rk4(f, y0, t):
     y = np.zeros((len(t), len(y0)))
     y[0] = y0
@@ -30,66 +28,70 @@ def rk4(f, y0, t):
         y[i] = y[i-1] + (h/6)*(k1 + 2*k2 + 2*k3 + k4)
     return y
 
-# --------- Example ODE system: Exponential Growth ---------
-def example_ode(y, t):
-    # dy/dt = r * y
-    r = 0.1
-    return np.array([r * y[0]])
+st.title("Prediction using Modified Picard Iterative Method (Manual Data Entry)")
 
-# --------- Streamlit Interface ---------
-st.set_page_config(page_title="Prediction using Modified Picard Iterative Method", layout="centered")
-st.title("Prediction using Modified Picard Iterative Method (with RK4 Benchmark)")
+st.write("Enter your data below (Year and Deaths). Add rows as needed.")
 
-st.markdown("""
-**Upload your initial value and select your simulation settings. This demo uses a simple exponential growth ODE.**
-""")
+# Example starter data (user can edit)
+data = {
+    "Year": [2000, 2001, 2002, 2003, 2004],
+    "Deaths": [100707, 104531, 110367, 112744, 113192]
+}
 
-col1, col2 = st.columns(2)
-with col1:
-    y0 = st.number_input("Initial value (y₀)", min_value=0.0, value=100.0)
-with col2:
-    r = st.number_input("Growth rate (r)", value=0.1)
-    
-t_end = st.number_input("Prediction time (t₁)", min_value=1.0, value=10.0)
-dt = st.number_input("Step size (Δt)", min_value=0.01, value=0.1)
-num_iter = st.slider("Number of Picard Iterations", min_value=1, max_value=10, value=3)
+df = st.data_editor(
+    pd.DataFrame(data),
+    num_rows="dynamic",
+    use_container_width=True,
+    key="input_table"
+)
 
-t = np.arange(0, t_end+dt, dt)
-# Use user input for ODE
-def user_ode(y, t):
-    return np.array([r * y[0]])
-
-if st.button("Predict"):
-    # Run both solvers
-    mpim_y = modified_picard(user_ode, [y0], t, num_iter=num_iter).flatten()
-    rk4_y = rk4(user_ode, [y0], t).flatten()
-
-    df = pd.DataFrame({
-        'Time': t,
-        'MPIM': mpim_y,
-        'RK4': rk4_y
-    })
-    
-    st.markdown("### Results Comparison")
-    st.line_chart(df.set_index('Time'))
-
-    st.write("**Prediction Table:**")
+if len(df) > 1 and not df['Deaths'].isnull().any() and not df['Year'].isnull().any():
+    st.write("### Data Preview")
     st.dataframe(df)
 
-    st.markdown("**Download Results:**")
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button(label="Download as CSV", data=csv, file_name='prediction_results.csv', mime='text/csv')
+    # Convert years to 0,1,2... for modeling
+    time = np.arange(len(df))
+    deaths = df['Deaths'].astype(float).values
 
-    st.markdown("""
-    **Method Explanation:**
-    - *Modified Picard Iterative Method* (MPIM) is an iterative solver for ODEs.
-    - *Fourth Order Runge-Kutta* (RK4) is the classical numerical benchmark.
-    """)
+    # Fit exponential model for parameter estimation
+    log_deaths = np.log(deaths)
+    r, log_y0 = np.polyfit(time, log_deaths, 1)
+    y0 = np.exp(log_y0)
+    st.write(f"**Estimated Initial Value (Year 0):** {y0:.2f}")
+    st.write(f"**Estimated Growth Rate (r):** {r:.4f}")
+
+    # Choose how many years to predict
+    n_future = st.number_input("Number of future years to predict", min_value=1, value=5)
+    total_time = np.arange(len(df) + n_future)
+    dt = 1  # yearly step
+
+    def user_ode(y, t):
+        return np.array([r * y[0]])
+
+    if st.button("Predict"):
+        mpim_y = modified_picard(user_ode, [y0], total_time, num_iter=3).flatten()
+        rk4_y = rk4(user_ode, [y0], total_time).flatten()
+
+        pred_years = list(df['Year']) + [f"Future {i+1}" for i in range(n_future)]
+        result_df = pd.DataFrame({
+            'Year': pred_years,
+            'MPIM': mpim_y,
+            'RK4': rk4_y
+        })
+
+        st.write("### Prediction Results")
+        st.dataframe(result_df)
+
+        # Plot predictions
+        fig, ax = plt.subplots()
+        ax.plot(pred_years, mpim_y, marker='o', label='MPIM')
+        ax.plot(pred_years, rk4_y, marker='s', label='RK4')
+        ax.scatter(df['Year'], deaths, color='black', label='Actual Data')
+        ax.legend()
+        ax.set_xticklabels(pred_years, rotation=45)
+        st.pyplot(fig)
 
 else:
-    st.info("Enter values and click Predict to see the result.")
+    st.info("Please enter at least two rows of data for prediction.")
 
-st.markdown("""
----
-*This is a demo system. You can adapt the code to solve more complex ODE systems by editing the ODE function section.*
-""")
+st.markdown("---\n*Manually enter your data to generate predictions. The system auto-fits the model and forecasts the future values.*")
