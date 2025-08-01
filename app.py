@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# MPIM and RK4 functions (unchanged)
+# MPIM and RK4 functions
 def modified_picard(f, y0, t, num_iter=3):
     y = np.zeros((len(t), len(y0)))
     y[0] = y0
@@ -53,8 +53,12 @@ if len(df) > 1 and not df['Deaths'].isnull().any() and not df['Year'].isnull().a
     y0 = float(df['Deaths'].iloc[0])
     st.write(f"**Initial Value (from first row, Year {df['Year'].iloc[0]}):** {y0:.2f}")
 
-    # User chooses growth rate
-    r = st.number_input("Enter the growth rate (r)", value=0.05, format="%.6f")
+    # Auto-fit exponential model to estimate growth rate
+    time = np.arange(len(df))
+    deaths = df['Deaths'].astype(float).values
+    log_deaths = np.log(deaths)
+    r, log_y0 = np.polyfit(time, log_deaths, 1)
+    st.write(f"**Estimated Growth Rate (r):** {r:.4f}")
 
     # Choose how many years to predict
     n_future = st.number_input("Number of future years to predict", min_value=1, value=5)
@@ -90,4 +94,4 @@ if len(df) > 1 and not df['Deaths'].isnull().any() and not df['Year'].isnull().a
 else:
     st.info("Please enter at least two rows of data for prediction.")
 
-st.markdown("---\n*Manually enter your data to generate predictions. The system uses the first Deaths value as the initial value, and the growth rate you enter for forecasting future values.*")
+st.markdown("---\n*Manually enter your data to generate predictions. The system uses the first Deaths value as the initial value and estimates the growth rate automatically from your data for forecasting future values.*")
