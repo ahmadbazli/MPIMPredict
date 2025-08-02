@@ -5,11 +5,10 @@ import pandas as pd
 
 st.set_page_config(page_title="PicardPredict: Editable Compartment Model System", layout="wide")
 
-# ----------------- Picard Iterative Method (General) ----------------------
+# ----- Picard Iterative Method -----
 def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
     t_values = [t0]
     y_values = [np.array(y0, dtype=float)]
-
     t = t0
     y = np.array(y0, dtype=float)
     while t < T:
@@ -21,6 +20,36 @@ def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
             y_n = y_new
         t += h
         y = y_n
+        t_values.append(t)
+        y_values.append(y.copy())
+    return np.array(t_values), np.array(y_values)
+
+# ----- Euler Method -----
+def euler_method(f, y0, t0, T, h):
+    t_values = [t0]
+    y_values = [np.array(y0, dtype=float)]
+    t = t0
+    y = np.array(y0, dtype=float)
+    while t < T:
+        y = y + h * np.array(f(t, y))
+        t += h
+        t_values.append(t)
+        y_values.append(y.copy())
+    return np.array(t_values), np.array(y_values)
+
+# ----- RK4 Method -----
+def rk4_method(f, y0, t0, T, h):
+    t_values = [t0]
+    y_values = [np.array(y0, dtype=float)]
+    t = t0
+    y = np.array(y0, dtype=float)
+    while t < T:
+        k1 = np.array(f(t, y))
+        k2 = np.array(f(t + h/2, y + h/2 * k1))
+        k3 = np.array(f(t + h/2, y + h/2 * k2))
+        k4 = np.array(f(t + h, y + h * k3))
+        y = y + h/6 * (k1 + 2*k2 + 2*k3 + k4)
+        t += h
         t_values.append(t)
         y_values.append(y.copy())
     return np.array(t_values), np.array(y_values)
@@ -69,7 +98,7 @@ def get_model_info(choice):
 
 # ---------------------- Streamlit UI -------------------------------------
 st.title("🚀 PicardPredict: Editable Compartment Model System")
-st.caption("For flexible epidemic, population, and engineering modeling with Picard's Method")
+st.caption("Flexible, trustworthy ODE modeling: Picard, Euler, and RK4, side by side.")
 
 tab1, tab2 = st.tabs(["🔬 Simulation", "📚 Learn Picard"])
 
@@ -128,7 +157,7 @@ with tab1:
     tolerance = st.number_input("Convergence tolerance (Picard)", value=1e-6, format="%.1e")
 
     st.markdown("---")
-    if st.button("🚦 Run Picard Simulation"):
+    if st.button("🚦 Run Picard & Benchmark"):
         try:
             # Replace param names with values in code string
             func_str = ode_str
@@ -136,29 +165,72 @@ with tab1:
                 func_str = func_str.replace(param, str(val))
             f = eval(func_str)
             y0 = y0_inputs
-            t_vals, y_vals = picard_iterative_method(f, y0, t0, T, h, tol=tolerance)
+
+            t_vals, y_picard = picard_iterative_method(f, y0, t0, T, h, tol=tolerance)
+            t_euler, y_euler = euler_method(f, y0, t0, T, h)
+            t_rk4, y_rk4 = rk4_method(f, y0, t0, T, h)
 
             labels = [f"{name}" for name in compartment_list]
 
             st.success("Simulation completed!")
 
-            st.subheader("Results Table")
-            df = pd.DataFrame(y_vals, columns=labels)
+            st.subheader("Results Table (Picard)")
+            df = pd.DataFrame(y_picard, columns=labels)
             df.insert(0, "t", t_vals)
             st.dataframe(df)
 
             csv = df.to_csv(index=False)
-            st.download_button("📥 Download CSV", data=csv, file_name="picard_predict_results.csv")
+            st.download_button("📥 Download Picard CSV", data=csv, file_name="picard_predict_results.csv")
 
-            st.subheader("Solution Plot")
+            # Results Table (Euler)
+            with st.expander("Show Euler Results Table"):
+                df_euler = pd.DataFrame(y_euler, columns=labels)
+                df_euler.insert(0, "t", t_euler)
+                st.dataframe(df_euler)
+                st.download_button("📥 Download Euler CSV", data=df_euler.to_csv(index=False), file_name="euler_results.csv")
+
+            # Results Table (RK4)
+            with st.expander("Show RK4 Results Table"):
+                df_rk4 = pd.DataFrame(y_rk4, columns=labels)
+                df_rk4.insert(0, "t", t_rk4)
+                st.dataframe(df_rk4)
+                st.download_button("📥 Download RK4 CSV", data=df_rk4.to_csv(index=False), file_name="rk4_results.csv")
+
+            # Solution Plot
+            st.subheader("Solution Plot: Picard, Euler, RK4")
             fig, ax = plt.subplots(figsize=(12, 6))
+            linestyles = ["-", "--", ":"]
+            methods = [("Picard", t_vals, y_picard, "-"),
+                       ("Euler", t_euler, y_euler, "--"),
+                       ("RK4", t_rk4, y_rk4, ":")]
             for i, label in enumerate(labels):
-                ax.plot(t_vals, y_vals[:, i], label=label)
+                for method_name, t_method, y_method, ls in methods:
+                    ax.plot(t_method, y_method[:, i], ls, label=f"{label} ({method_name})")
             ax.set_xlabel("Time")
             ax.set_ylabel("Value")
-            ax.set_title("Solution Trajectories (Picard Method)")
+            ax.set_title("Solution Trajectories: Picard, Euler, RK4")
             ax.legend()
             st.pyplot(fig)
+
+            # Total Population Plot
+            st.subheader("Total (Sum of Compartments)")
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            ax2.plot(t_vals, np.sum(y_picard, axis=1), '-', label="Picard")
+            ax2.plot(t_euler, np.sum(y_euler, axis=1), '--', label="Euler")
+            ax2.plot(t_rk4, np.sum(y_rk4, axis=1), ':', label="RK4")
+            ax2.set_xlabel("Time")
+            ax2.set_ylabel("Total")
+            ax2.set_title("Population Conservation Check")
+            ax2.legend()
+            st.pyplot(fig2)
+
+            # Warnings
+            min_picard = np.min(y_picard)
+            max_picard = np.max(y_picard)
+            if np.isnan(min_picard) or np.isnan(max_picard):
+                st.warning("Warning: Solution contains NaN values (may be unstable or diverged).")
+            elif min_picard < -1e-6:
+                st.warning("Warning: Some compartment values became negative. Check your model/parameters.")
 
         except Exception as e:
             st.error(f"Error in ODE function or initial values: {e}")
@@ -169,12 +241,13 @@ with tab2:
     - The Picard Iterative Method is a numerical method for solving differential equations.
     - At each time step, it successively refines the solution until it converges to a stable value within your set tolerance.
     - This system lets you use the method on any ODE or system of ODEs you choose.
+    - For trust and benchmarking, you can compare with both Euler and Runge-Kutta 4th order (RK4) solutions!
     - It's used in many fields: science, engineering, epidemiology, and finance.
     """)
     st.image("https://upload.wikimedia.org/wikipedia/commons/9/9b/Iterative_methods_ODE.png", width=400)
     st.info("""
     **Try different models, initial values, and tolerances.  
-    Explore how the Picard Iterative Method adapts to your system!**
+    Explore how the Picard, Euler, and RK4 methods compare!**
     """)
     st.markdown("---")
     st.markdown("""
