@@ -1,11 +1,9 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="PicardPredict: Editable Compartment Model System", layout="wide")
-
-# ----- Picard Iterative Method -----
+# ----------------- Picard Iterative Method (General) ----------------------
 def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
     t_values = [t0]
     y_values = [np.array(y0, dtype=float)]
@@ -24,7 +22,6 @@ def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
         y_values.append(y.copy())
     return np.array(t_values), np.array(y_values)
 
-# ----- Euler Method -----
 def euler_method(f, y0, t0, T, h):
     t_values = [t0]
     y_values = [np.array(y0, dtype=float)]
@@ -37,7 +34,6 @@ def euler_method(f, y0, t0, T, h):
         y_values.append(y.copy())
     return np.array(t_values), np.array(y_values)
 
-# ----- RK4 Method -----
 def rk4_method(f, y0, t0, T, h):
     t_values = [t0]
     y_values = [np.array(y0, dtype=float)]
@@ -96,68 +92,63 @@ def get_model_info(choice):
         code_example = "lambda t, y: [\n    -2*y[0]\n]"
     return description, compartments, parameters, param_defaults, y0_default, code_example
 
-# ---------------------- Streamlit UI -------------------------------------
-st.title("🚀 PicardPredict: Editable Compartment Model System")
-st.caption("Flexible, trustworthy ODE modeling: Picard, Euler, and RK4, side by side.")
+# ----------- Streamlit Interface Layout -----------------
+st.set_page_config(page_title="PicardPredict: Benchmark ODE System", layout="wide")
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/9/9b/Iterative_methods_ODE.png", width=100)
+st.sidebar.title("PicardPredict")
 
-tab1, tab2 = st.tabs(["🔬 Simulation", "📚 Learn Picard"])
+st.sidebar.markdown("**Flexible Differential Equation Solver with Picard, Euler & RK4**")
+model_list = [
+    "SIR Epidemic (Infectious Disease)",
+    "Logistic Growth (Population)",
+    "Custom (write your own)"
+]
+model_choice = st.sidebar.selectbox("Model Template", model_list, index=0)
+description, base_compartments, base_params, param_defaults, y0_default, code_example = get_model_info(model_choice)
+st.sidebar.info(description)
+
+# Compartments, Parameters, Initials
+compartments = st.sidebar.text_input("Compartments (comma separated):", value=", ".join(base_compartments))
+compartment_list = [c.strip() for c in compartments.split(",") if c.strip()]
+n_compartments = len(compartment_list)
+
+parameters = st.sidebar.text_input("Parameters (comma separated):", value=", ".join(base_params))
+param_list = [p.strip() for p in parameters.split(",") if p.strip()]
+param_dict = {}
+st.sidebar.markdown("**Parameter values:**")
+for param in param_list:
+    default = param_defaults[param] if param in param_defaults else 1.0
+    param_dict[param] = st.sidebar.number_input(f"{param}:", value=float(default), key=param)
+
+st.sidebar.markdown("**Initial values:**")
+y0_inputs = []
+for i, c in enumerate(compartment_list):
+    default_val = y0_default[i] if i < len(y0_default) else 0.0
+    val = st.sidebar.number_input(f"{c}₀:", value=float(default_val), key=f"init_{c}")
+    y0_inputs.append(val)
+
+# Simulation settings
+st.sidebar.markdown("---")
+t0 = st.sidebar.number_input("Start time (t₀)", value=0.0)
+T = st.sidebar.number_input("End time (T)", value=10.0)
+h = st.sidebar.number_input("Step size (h)", value=0.1, min_value=0.01, step=0.01, format="%.2f")
+tolerance = st.sidebar.number_input("Tolerance", value=1e-6, format="%.1e")
+run = st.sidebar.button("🚦 Run Simulation")
+
+# --------- Main Layout: Tabs --------------
+tab1, tab2, tab3 = st.tabs(["Simulation Results", "Population Check", "About/Learn"])
 
 with tab1:
-    st.header("1️⃣ Choose a Template or Start from Scratch")
-    model_list = [
-        "SIR Epidemic (Infectious Disease)",
-        "Logistic Growth (Population)",
-        "Custom (write your own)"
-    ]
-    model_choice = st.selectbox("Select a model template", model_list, index=0)
-    description, base_compartments, base_params, param_defaults, y0_default, code_example = get_model_info(model_choice)
-    st.markdown(f"**Description:** {description}")
-
-    st.markdown("#### Compartments (e.g., S, E, I, R):")
-    compartments = st.text_input("Compartments (comma separated):", value=", ".join(base_compartments))
-    compartment_list = [c.strip() for c in compartments.split(",") if c.strip()]
-    n_compartments = len(compartment_list)
-
-    st.markdown("#### Parameters (e.g., beta, gamma, alpha):")
-    param_string = st.text_input("Parameters (comma separated):", value=", ".join(base_params))
-    param_list = [p.strip() for p in param_string.split(",") if p.strip()]
-
-    st.markdown("#### Set Parameters:")
-    param_dict = {}
-    for param in param_list:
-        default = param_defaults[param] if param in param_defaults else 1.0
-        param_dict[param] = st.number_input(f"{param}:", value=float(default), key=param)
-
-    st.markdown("#### Set Initial Values:")
-    y0_inputs = []
-    for i, c in enumerate(compartment_list):
-        default_val = y0_default[i] if i < len(y0_default) else 0.0
-        val = st.number_input(f"Initial value for {c}:", value=float(default_val), key=f"init_{c}")
-        y0_inputs.append(val)
-
-    st.markdown(
-        "**Variables in y:**  \n" +
-        ", ".join([f"y[{i}] = {name}" for i, name in enumerate(compartment_list)])
-    )
-
+    st.title("Simulation Results")
+    st.markdown("**Variables in y:**  " +
+        ", ".join([f"y[{i}] = {name}" for i, name in enumerate(compartment_list)]))
     st.markdown("#### Write your ODE system (as a Python lambda):")
     ode_str = st.text_area(
         "ODE system (use t, y, and your parameter names):",
         value=code_example, height=100
     )
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        t0 = st.number_input("Initial time (t0)", value=0.0)
-    with col2:
-        T = st.number_input("End time (T)", value=10.0)
-    with col3:
-        h = st.number_input("Step size (h)", value=0.1, min_value=0.01, step=0.01, format="%.2f")
-
-    tolerance = st.number_input("Convergence tolerance (Picard)", value=1e-6, format="%.1e")
-
-    st.markdown("---")
-    if st.button("🚦 Run Picard & Benchmark"):
+    if run:
         try:
             # Replace param names with values in code string
             func_str = ode_str
@@ -169,7 +160,6 @@ with tab1:
             t_vals, y_picard = picard_iterative_method(f, y0, t0, T, h, tol=tolerance)
             t_euler, y_euler = euler_method(f, y0, t0, T, h)
             t_rk4, y_rk4 = rk4_method(f, y0, t0, T, h)
-
             labels = [f"{name}" for name in compartment_list]
 
             st.success("Simulation completed!")
@@ -178,28 +168,23 @@ with tab1:
             df = pd.DataFrame(y_picard, columns=labels)
             df.insert(0, "t", t_vals)
             st.dataframe(df)
-
             csv = df.to_csv(index=False)
             st.download_button("📥 Download Picard CSV", data=csv, file_name="picard_predict_results.csv")
 
-            # Results Table (Euler)
             with st.expander("Show Euler Results Table"):
                 df_euler = pd.DataFrame(y_euler, columns=labels)
                 df_euler.insert(0, "t", t_euler)
                 st.dataframe(df_euler)
                 st.download_button("📥 Download Euler CSV", data=df_euler.to_csv(index=False), file_name="euler_results.csv")
 
-            # Results Table (RK4)
             with st.expander("Show RK4 Results Table"):
                 df_rk4 = pd.DataFrame(y_rk4, columns=labels)
                 df_rk4.insert(0, "t", t_rk4)
                 st.dataframe(df_rk4)
                 st.download_button("📥 Download RK4 CSV", data=df_rk4.to_csv(index=False), file_name="rk4_results.csv")
 
-            # Solution Plot
             st.subheader("Solution Plot: Picard, Euler, RK4")
             fig, ax = plt.subplots(figsize=(12, 6))
-            linestyles = ["-", "--", ":"]
             methods = [("Picard", t_vals, y_picard, "-"),
                        ("Euler", t_euler, y_euler, "--"),
                        ("RK4", t_rk4, y_rk4, ":")]
@@ -212,19 +197,6 @@ with tab1:
             ax.legend()
             st.pyplot(fig)
 
-            # Total Population Plot
-            st.subheader("Total (Sum of Compartments)")
-            fig2, ax2 = plt.subplots(figsize=(10, 4))
-            ax2.plot(t_vals, np.sum(y_picard, axis=1), '-', label="Picard")
-            ax2.plot(t_euler, np.sum(y_euler, axis=1), '--', label="Euler")
-            ax2.plot(t_rk4, np.sum(y_rk4, axis=1), ':', label="RK4")
-            ax2.set_xlabel("Time")
-            ax2.set_ylabel("Total")
-            ax2.set_title("Population Conservation Check")
-            ax2.legend()
-            st.pyplot(fig2)
-
-            # Warnings
             min_picard = np.min(y_picard)
             max_picard = np.max(y_picard)
             if np.isnan(min_picard) or np.isnan(max_picard):
@@ -236,22 +208,42 @@ with tab1:
             st.error(f"Error in ODE function or initial values: {e}")
 
 with tab2:
-    st.header("📚 What is the Picard Iterative Method?")
+    st.title("Population/Total Check")
+    if run:
+        try:
+            st.markdown("**Total Population (Sum of Compartments) for Each Method**")
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            ax2.plot(t_vals, np.sum(y_picard, axis=1), '-', label="Picard")
+            ax2.plot(t_euler, np.sum(y_euler, axis=1), '--', label="Euler")
+            ax2.plot(t_rk4, np.sum(y_rk4, axis=1), ':', label="RK4")
+            ax2.set_xlabel("Time")
+            ax2.set_ylabel("Total")
+            ax2.set_title("Population Conservation Check")
+            ax2.legend()
+            st.pyplot(fig2)
+        except:
+            st.info("Please run the simulation first.")
+
+with tab3:
+    st.title("About & Learn")
     st.markdown("""
+    ### What is the Picard Iterative Method?
     - The Picard Iterative Method is a numerical method for solving differential equations.
-    - At each time step, it successively refines the solution until it converges to a stable value within your set tolerance.
-    - This system lets you use the method on any ODE or system of ODEs you choose.
-    - For trust and benchmarking, you can compare with both Euler and Runge-Kutta 4th order (RK4) solutions!
-    - It's used in many fields: science, engineering, epidemiology, and finance.
-    """)
-    st.image("https://upload.wikimedia.org/wikipedia/commons/9/9b/Iterative_methods_ODE.png", width=400)
-    st.info("""
-    **Try different models, initial values, and tolerances.  
-    Explore how the Picard, Euler, and RK4 methods compare!**
-    """)
-    st.markdown("---")
-    st.markdown("""
+    - At each time step, it successively refines the solution until it converges within your set tolerance.
+    - In this app, you can benchmark Picard against Euler and Runge-Kutta (RK4) for full reliability and learning.
+    - Widely used in science, engineering, epidemiology, and more.
+    ---
+    #### How to Trust the Result?
+    - If Picard, Euler, and RK4 results are very close (especially with smaller step size and tolerance), your answer is reliable.
+    - The app will warn you if solutions go negative or become unstable.
+    ---
+    #### Innovation Features
+    - Model anything (SIR, SEIR, population, custom ODEs)
+    - Instantly compare multiple methods
+    - Editable model structure, parameters, and equations
+    - Download results for publication or further analysis
+
     **Made for innovation. If you like it, use and share!**
     """)
-
-st.caption("© 2025 PicardPredict | Empowering Differential Solutions for All")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/9/9b/Iterative_methods_ODE.png", width=300)
+    st.caption("© 2025 PicardPredict | Empowering Differential Solutions for All")
