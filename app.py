@@ -3,14 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-st.set_page_config(page_title="PicardPredict: Innovative Differential Equation Prediction", layout="wide")
+st.set_page_config(page_title="PicardPredict: Editable Compartment Model System", layout="wide")
 
 # ----------------- Picard Iterative Method (General) ----------------------
 def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
-    """
-    Picard Iterative Method for y' = f(t, y), iterating until convergence at each time step.
-    Returns (t_values, y_values)
-    """
     t_values = [t0]
     y_values = [np.array(y0, dtype=float)]
 
@@ -18,7 +14,7 @@ def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
     y = np.array(y0, dtype=float)
     while t < T:
         y_n = y.copy()
-        for it in range(1, max_iter + 1):
+        for _ in range(1, max_iter + 1):
             y_new = y + h * np.array(f(t, y_n))
             if np.linalg.norm(y_new - y_n) < tol:
                 break
@@ -29,64 +25,97 @@ def picard_iterative_method(f, y0, t0, T, h, tol=1e-6, max_iter=1000):
         y_values.append(y.copy())
     return np.array(t_values), np.array(y_values)
 
-# ------------- Model Library (for innovation wow factor) -----------------
+# ------------- Model Library (for starting templates) -----------------
 def get_model_info(choice):
     if choice == "SIR Epidemic (Infectious Disease)":
-        description = "A classic epidemiology model: S (Susceptible), I (Infected), R (Recovered)"
-        code = "lambda t, y: [-beta*y[0]*y[1], beta*y[0]*y[1] - gamma*y[1], gamma*y[1]]"
-        variables = ["S", "I", "R"]
-        params = {"beta": 0.3, "gamma": 0.1}
-        y0 = [0.99, 0.01, 0.0]
+        description = "A classic SIR model: S (Susceptible), I (Infected), R (Recovered)"
+        compartments = ["S", "I", "R"]
+        parameters = ["beta", "gamma"]
+        param_defaults = {"beta": 0.3, "gamma": 0.1}
+        y0_default = [0.99, 0.01, 0.0]
+        code_example = (
+            "lambda t, y: [\n"
+            "    -beta*y[0]*y[1],\n"
+            "    beta*y[0]*y[1] - gamma*y[1],\n"
+            "    gamma*y[1]\n"
+            "]"
+        )
     elif choice == "Logistic Growth (Population)":
-        description = "Logistic population growth: dP/dt = r*P*(1-P/K)"
-        code = "lambda t, y: [r*y[0]*(1 - y[0]/K)]"
-        variables = ["P"]
-        params = {"r": 0.5, "K": 10.0}
-        y0 = [0.5]
+        description = "Logistic growth: dP/dt = r*P*(1-P/K)"
+        compartments = ["P"]
+        parameters = ["r", "K"]
+        param_defaults = {"r": 0.5, "K": 10.0}
+        y0_default = [0.5]
+        code_example = (
+            "lambda t, y: [\n"
+            "    r*y[0]*(1 - y[0]/K)\n"
+            "]"
+        )
     elif choice == "Custom (write your own)":
-        description = "Write any ODE system with variables t (time) and y (array of current values)"
-        code = "lambda t, y: [your_equation_here]"
-        variables = ["y1"]
-        params = {}
-        y0 = [1.0]
+        description = "Write any ODE system with variables t (time), y (vector), and your parameters."
+        compartments = ["y1"]
+        parameters = []
+        param_defaults = {}
+        y0_default = [1.0]
+        code_example = "lambda t, y: [\n    -2*y[0]\n]"
     else:
         description = "Simple ODE: dy/dt = -2y"
-        code = "lambda t, y: [-2*y[0]]"
-        variables = ["y"]
-        params = {}
-        y0 = [1.0]
-    return description, code, variables, params, y0
+        compartments = ["y"]
+        parameters = []
+        param_defaults = {}
+        y0_default = [1.0]
+        code_example = "lambda t, y: [\n    -2*y[0]\n]"
+    return description, compartments, parameters, param_defaults, y0_default, code_example
 
 # ---------------------- Streamlit UI -------------------------------------
-st.title("🚀 PicardPredict: Data-Driven Differential Equation Prediction System")
-st.caption("Innovation for Science, Engineering, and Education - Solve, Visualize, and Learn with the Picard Iterative Method!")
+st.title("🚀 PicardPredict: Editable Compartment Model System")
+st.caption("For flexible epidemic, population, and engineering modeling with Picard's Method")
 
 tab1, tab2 = st.tabs(["🔬 Simulation", "📚 Learn Picard"])
 
 with tab1:
-    st.header("1️⃣ Choose or Define a Model")
+    st.header("1️⃣ Choose a Template or Start from Scratch")
     model_list = [
         "SIR Epidemic (Infectious Disease)",
         "Logistic Growth (Population)",
-        "Simple ODE: dy/dt = -2y",
         "Custom (write your own)"
     ]
-    model_choice = st.selectbox("Select a model", model_list, index=0)
-    description, code_example, var_names, params, y0_default = get_model_info(model_choice)
+    model_choice = st.selectbox("Select a model template", model_list, index=0)
+    description, base_compartments, base_params, param_defaults, y0_default, code_example = get_model_info(model_choice)
     st.markdown(f"**Description:** {description}")
-    st.markdown("**Right-hand side of ODE system** (as lambda function):")
-    ode_str = st.text_input("ODE system (Python lambda):", value=code_example)
-    st.markdown("**Initial conditions (as Python list, order matches variables):**")
-    y0_str = st.text_input("Initial values:", value=str(y0_default))
 
-    # Dynamic parameter input
-    st.markdown("**Model parameters (if any):**")
+    st.markdown("#### Compartments (e.g., S, E, I, R):")
+    compartments = st.text_input("Compartments (comma separated):", value=", ".join(base_compartments))
+    compartment_list = [c.strip() for c in compartments.split(",") if c.strip()]
+    n_compartments = len(compartment_list)
+
+    st.markdown("#### Parameters (e.g., beta, gamma, alpha):")
+    param_string = st.text_input("Parameters (comma separated):", value=", ".join(base_params))
+    param_list = [p.strip() for p in param_string.split(",") if p.strip()]
+
+    st.markdown("#### Set Parameters:")
     param_dict = {}
-    for param, default in params.items():
+    for param in param_list:
+        default = param_defaults[param] if param in param_defaults else 1.0
         param_dict[param] = st.number_input(f"{param}:", value=float(default), key=param)
 
-    # Show which variable is which
-    st.markdown("**Variables:** " + ", ".join([f"y{i+1} ({name})" for i, name in enumerate(var_names)]))
+    st.markdown("#### Set Initial Values:")
+    y0_inputs = []
+    for i, c in enumerate(compartment_list):
+        default_val = y0_default[i] if i < len(y0_default) else 0.0
+        val = st.number_input(f"Initial value for {c}:", value=float(default_val), key=f"init_{c}")
+        y0_inputs.append(val)
+
+    st.markdown(
+        "**Variables in y:**  \n" +
+        ", ".join([f"y[{i}] = {name}" for i, name in enumerate(compartment_list)])
+    )
+
+    st.markdown("#### Write your ODE system (as a Python lambda):")
+    ode_str = st.text_area(
+        "ODE system (use t, y, and your parameter names):",
+        value=code_example, height=100
+    )
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -101,16 +130,15 @@ with tab1:
     st.markdown("---")
     if st.button("🚦 Run Picard Simulation"):
         try:
-            # Prepare function string with parameter replacement (for library models)
+            # Replace param names with values in code string
             func_str = ode_str
             for param, val in param_dict.items():
                 func_str = func_str.replace(param, str(val))
             f = eval(func_str)
-            y0 = eval(y0_str)
-            t_vals, y_vals = picard_iterative_method(
-                f, y0, t0, T, h, tol=tolerance)
+            y0 = y0_inputs
+            t_vals, y_vals = picard_iterative_method(f, y0, t0, T, h, tol=tolerance)
 
-            labels = [f"y{i+1}" + (f" ({name})" if name != f"y{i+1}" else "") for i, name in enumerate(var_names)]
+            labels = [f"{name}" for name in compartment_list]
 
             st.success("Simulation completed!")
 
@@ -133,7 +161,7 @@ with tab1:
             st.pyplot(fig)
 
         except Exception as e:
-            st.error(f"Error in ODE or initial values: {e}")
+            st.error(f"Error in ODE function or initial values: {e}")
 
 with tab2:
     st.header("📚 What is the Picard Iterative Method?")
